@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <div id="root">
+  </div>
+    <!-- <div id="foo">
+      <span>bar</span>
+      <span>
+        <p>
+          1
+        </p>
+      </span>
+      <span></span>
+    </div>
+    <div id="foo">
+      <span>bar</span><span>
+                        <p></p>
+                      </span> <span></span>
+    </div> -->
+</body>
+</html>
+<script type="text/javascript">
+// fiber 每个元素对应一个 fiber 节点
+ function createTextElement(text) {
+    return {
+      type: 'TEXT_ELEMENT',
+      props: {
+        nodeValue: text,
+        children: [],
+      }
+    }
+  }
+  function createElement(type, props, ...children) {
+    return {
+      type,
+      props: {
+        ...props,
+        children: children.map(child =>
+          typeof child === "object"
+            ? child
+            : createTextElement(child)
+        ),
+      },
+    }
+  }
+  //  <div id="foo">
+  //    <span>bar</span>
+  //    <span></span>
+  //  </div>
+
+  const element = createElement(
+    "div",
+    { id: "foo" },
+    createElement("span", null, "bar"),
+    createElement("span", null, "bar2")
+  );
+
+  let nextUnitOfWork = null;
+  function workLoop(deadline) {
+    let shouldYield = false;
+    if (nextUnitOfWork && !shouldYield) {
+      // 当查找到最后时候 nextUnitOfWork 会变成 undefined 因为最后找到 div 是 root 那个节点
+      // 该节点的 parent 为 undefined
+      let count = 0;
+      nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+      count = 0;
+      const start = new Date();
+      while((new Date() - start) < 3000) {
+
+      }
+      shouldYield = deadline.timeRemaining() < 1;
+    }
+    requestIdleCallback(workLoop);
+  }
+
+  const createDom = (fiber) => {
+    let el = null;
+    if (fiber.type === 'TEXT_ELEMENT') {
+      el = document.createTextNode("");
+      el.textContent = fiber.props.nodeValue;
+    } else {
+      el = document.createElement(fiber.type);
+    }
+    Object.keys(fiber.props).forEach((item) => {
+      if (item === 'children') return;
+      el[item] = fiber.props[item];
+    });
+    return el;
+  }
+
+  function render(element, container) {
+    nextUnitOfWork = {
+      dom: container,
+      props: {
+        children: [element]
+      }
+    }
+  }
+
+  function performUnitOfWork(fiber) {
+    // 1. 将元素添加到DOM中
+    if (!fiber.dom) {
+      fiber.dom = createDom(fiber);
+    }
+    if (fiber.parent) {
+      fiber.parent.dom.appendChild(fiber.dom);
+    }
+    // 2. 给子元素创建fiber
+    const children = fiber.props.children;
+    let index = 0;
+    let preFiber = null;
+    while(index < children.length) {
+      const newFiber = {
+        dom: null,
+        type: children[index].type,
+        props: children[index].props,
+        parent: fiber,
+        child: null,
+        sibling: null,
+      };
+      if (index === 0) {
+        fiber.child = newFiber;
+      } else {
+        preFiber.sibling = newFiber;
+      }
+      index ++;
+      preFiber = newFiber;
+    }
+    // 3. 返回下一个工作单元
+    // 深度优先搜索，如果有 child 先返回 child
+    if (fiber.child) {
+      return fiber.child;
+    }
+    // 无 child 返回 sibling
+    // let siblingFiber = fiber.sibling;
+    let nextFiber = fiber;
+    // 递归向上查找
+    while(nextFiber) {
+      if (nextFiber.sibling) {
+        return nextFiber.sibling;
+      }
+      nextFiber = nextFiber.parent;
+    }
+  }
+
+  requestIdleCallback(workLoop);
+  render(element, document.getElementById('root'));
+</script>

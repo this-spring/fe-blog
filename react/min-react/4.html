@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <div id="root">
+  </div>
+  <button id="rerender">rerender</button>
+</body>
+</html>
+<script type="text/javascript">
+  const CommandType = {
+    UPDATE: 'UPDATE',
+    PLACEMENT: 'PLACEMENT',
+    DELETION: 'DELETION',
+  };
+  let nextUnitOfWork = null;
+  let wipRoot = null;
+  let currentRoot = null;
+  let deleteFiber = null;
+// fiber 每个元素对应一个 fiber 节点
+ function createTextElement(text) {
+    return {
+      type: 'TEXT_ELEMENT',
+      props: {
+        nodeValue: text,
+        children: [],
+      }
+    }
+  }
+  function createElement(type, props, ...children) {
+    return {
+      type,
+      props: {
+        ...props,
+        children: children.map(child =>
+          typeof child === "object"
+            ? child
+            : createTextElement(child)
+        ),
+      },
+    }
+  }
+
+  function workLoop(deadline) {
+    let shouldYield = false;
+    if (nextUnitOfWork && !shouldYield) {
+      // 当查找到最后时候 nextUnitOfWork 会变成 undefined 因为最后找到 div 是 root 那个节点
+      // 该节点的 parent 为 undefined
+      nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+      shouldYield = deadline.timeRemaining() < 1;
+    }
+    if (!nextUnitOfWork && wipRoot) {
+      commitRoot();
+    }
+    requestIdleCallback(workLoop);
+  }
+
+  function updateDom(fiber) {
+    const current = fiber.props;
+    const pre = fiber.alternate.props;
+    const dom = fiber.dom;
+    const isProperty = key => key !== "children";
+    const shouldDelete = (next) => key => !(key in next);
+    const shouldAdd = (pre, next) => key => next[key] !== pre[key];
+  }
+
+  function commitWork(fiber) {
+    if (!fiber) return;
+    if (fiber.parent) {
+      fiber.parent.dom.appendChild(fiber.dom);
+    }
+    if (fiber.effectTag === CommandType.PLACEMENT) {
+      fiber.parent.dom.appendChild(fiber.dom);
+    } else if (fiber.effectTag === CommandType.UPDATE) {
+      updateDom(fiber);
+    } else if (fiber.effectTag === CommandType.DELETION) {
+      fiber.parent.removeChild(fiber.dom);
+    }
+    commitWork(fiber.child);
+    commitWork(fiber.sibling);
+  }
+
+  function commitRoot() {
+    commitWork(wipRoot);
+    currentRoot = wipRoot;
+    wipRoot = null;
+  }
+
+  const createDom = (fiber) => {
+    let el = null;
+    if (fiber.type === 'TEXT_ELEMENT') {
+      el = document.createTextNode("");
+      el.textContent = fiber.props.nodeValue;
+    } else {
+      el = document.createElement(fiber.type);
+    }
+    Object.keys(fiber.props).forEach((item) => {
+      if (item === 'children') return;
+      el[item] = fiber.props[item];
+    });
+    return el;
+  }
+
+  function render(element, container) {
+    wipRoot = {
+      dom: container,
+      props: {
+        children: [element]
+      },
+      alternate: currentRoot,
+    }
+    nextUnitOfWork = wipRoot;
+    deleteFiber = [];
+  }
+
+  function updateHostComponent() {
+    if (!fiber.dom) {
+      fiber.dom = createDom(fiber);
+    }
+    reconcileChildren(fiber, fiber.props.children);
+  }
+
+  function reconcileChildren(wipFiber, element) {
+    // 2. 给子元素创建fiber
+    let index = 0;
+    let preFiber = null;
+    // 之所以获取 child 是因为我们的 element 也是 wipFiber 的 child
+    let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
+    while(index < children.length) {
+      let newFiber = null;
+      const item = element[index];
+      const sameType = oldFiber && item && oldFiber.type === item.type;
+      if (sameType) {
+        newFiber = {
+          type: item.type,
+          props: item.props,
+          child: null,
+          parent: wipFiber,
+          alternate: oldFiber,
+          effectTag: CommandType.UPDATE,
+        }
+      }
+      if (element && !sameType) {
+        newFiber = {
+          type: element.type,
+          props: element.props,
+          dom: null,
+          alternate: null,
+          effectTag: CommandType.PLACEMENT
+        }
+      }
+      if (oldFiber && !sameType) {
+        oldFiber.effectTag = CommandType.DELETION;
+        deleteFiber.push(oldFiber);
+      }
+
+      if (oldFiber) {
+        oldFiber = oldFiber.sibling;
+      }
+
+      if (index === 0) {
+        fiber.child = newFiber;
+      } else {
+        preFiber.sibling = newFiber;
+      }
+      index ++;
+      preFiber = newFiber;
+    }
+  }
+
+  function performUnitOfWork(fiber) {
+    updateHostComponent(fiber);
+    // 深度优先搜索，如果有 child 先返回 child
+    if (fiber.child) {
+      return fiber.child;
+    }
+    // 无 child 返回 sibling
+    // let siblingFiber = fiber.sibling;
+    let nextFiber = fiber;
+    // 递归向上查找
+    while(nextFiber) {
+      if (nextFiber.sibling) {
+        return nextFiber.sibling;
+      }
+      nextFiber = nextFiber.parent;
+    }
+  }
+
+  requestIdleCallback(workLoop);
+
+  const element = createElement(
+    "div",
+    { id: "foo" },
+    createElement("span", null, "bar"),
+    createElement("span", null, "bar2")
+  );
+
+  const element2 = createElement(
+    "div",
+    { id: "foo" },
+    createElement("span", null, "bar3"),
+    createElement("p", null, "bar4")
+  );
+
+  render(element, document.getElementById('root'));
+  document.getElementById('rerender').addEventListener('click', function() {
+    render(element2, document.getElementById('root'));
+  })
+</script>

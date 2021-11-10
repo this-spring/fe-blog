@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>
+<script>
+  function createTextElement(text) {
+    return {
+      type: 'TEXT_ELEMENT',
+      props: {
+        nodeValue: text,
+        children: [],
+      }
+    }
+  }
+  // 执行顺序从里到外
+  // (
+  //   <h1 onClick={() => setState(c => c + 1)}>
+  //     <span> Count: {state}</span>
+  //   </h1>
+  // )
+  // 先打印span 然后h1
+  // ...children 以数组形式传入进来
+  function createElement(type, props, ...children) {
+    return {
+      type,
+      props: {
+        ...props,
+        children: children.map(child =>
+          typeof child === "object"
+            ? child
+            : createTextElement(child)
+        ),
+      },
+    }
+  }
+
+  const element = createElement(
+    "div",
+    { id: "foo" },
+    createElement("span", null, "bar"),
+    createElement("span")
+  );
+
+  function render(element, container) {
+    const { type, props} = element;
+    let el = null;
+    if (type === 'TEXT_ELEMENT') {
+      el = document.createTextNode("");
+      el.textContent = element.props.nodeValue;
+    } else {
+      el = document.createElement(type);
+    }
+    Object.keys(props).forEach((key) => {
+      if (key == "children") return;
+      el[key] = props[key];
+    });
+    props.children.forEach(element => {
+      render(element, el);
+    });
+    container.appendChild(el);
+  }
+  render(element, document.getElementById('root'));
+</script>
