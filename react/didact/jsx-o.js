@@ -16,12 +16,12 @@ function divDom() {
 }
 
 function Counter() {
-  var _Didact$useState = Didact.useState(1),
-      _Didact$useState2 = _slicedToArray(_Didact$useState, 2),
-      state = _Didact$useState2[0],
-      setState = _Didact$useState2[1];
+  var _useState = useState(1),
+      _useState2 = _slicedToArray(_useState, 2),
+      state = _useState2[0],
+      setState = _useState2[1];
 
-  return React.createElement(
+  return createElement(
     "h1",
     { onClick: function onClick() {
         return setState(function (c) {

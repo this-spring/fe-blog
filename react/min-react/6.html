@@ -13,14 +13,21 @@
 </body>
 </html>
 <script type="text/javascript">
+  var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+
   const CommandType = {
     UPDATE: 'UPDATE',
     PLACEMENT: 'PLACEMENT',
     DELETION: 'DELETION',
   };
+  // 下一个要处理的 fiber
   let nextUnitOfWork = null;
-  let wipRoot = null;
+  // 当前正在工作的 fiber
+  let wipFiber = null;
+  let hookIndex = 0;
+  // 当前正在使用的 root 树 保存为了再次 render 时候进行 diff 对比
   let currentRoot = null;
+  // 要删除的 fiber
   let deleteFiber = null;
 // fiber 每个元素对应一个 fiber 节点
  function createTextElement(text) {
@@ -54,16 +61,23 @@
       nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
       shouldYield = deadline.timeRemaining() < 1;
     }
-    if (!nextUnitOfWork && wipRoot) {
+    if (!nextUnitOfWork && wipFiber) {
       commitRoot();
     }
     requestIdleCallback(workLoop);
   }
 
-  function updateDom(fiber) {
-    const current = fiber.props;
-    const pre = fiber.alternate.props;
-    const dom = fiber.dom;
+  const isEvent = key => key.startsWith("on")
+const isProperty = key =>
+  key !== "children" && !isEvent(key)
+const isNew = (prev, next) => key =>
+  prev[key] !== next[key]
+const isGone = (prev, next) => key => !(key in next)
+
+  function updateDom(dom, pre, current) {
+    // const current = fiber.props;
+    // const pre = fiber.alternate.props;
+    // const dom = fiber.dom;
     const isProperty = key => key !== "children";
     const shouldDelete = (next) => key => !(key in next);
     const shouldAdd = (pre, next) => key => next[key] !== pre[key];
@@ -74,14 +88,36 @@
       dom[key] = current[key];
       // dom.setAttribute(key, current[key]);
     });
+      // Add event listeners
+  Object.keys(current)
+    .filter(isEvent)
+    .filter(isNew(pre, current))
+    .forEach(name => {
+      const eventType = name
+        .toLowerCase()
+        .substring(2)
+      dom.addEventListener(
+        eventType,
+        current[name]
+      )
+    })
   }
 
   function commitWork(fiber) {
     if (!fiber) return;
-    if (fiber.effectTag === CommandType.PLACEMENT) {
-      fiber.parent.dom.appendChild(fiber.dom);
-    } else if (fiber.effectTag === CommandType.UPDATE) {
-      updateDom(fiber);
+    // 父级Fiber
+    let domParentFiber = fiber.parent
+    // 直到找到含有dom的Fiber节点
+    while (!domParentFiber.dom) {
+      domParentFiber = domParentFiber.parent
+    }
+    const domParent = domParentFiber.dom;
+
+    if (fiber.effectTag === CommandType.PLACEMENT && fiber.dom !== null) {
+      domParent.appendChild(fiber.dom);
+      // 这里判断 fiber.dom !== null 原因是防止函数式组件 fiber.dom 是 null
+    } else if (fiber.effectTag === CommandType.UPDATE && fiber.dom !== null) {
+      updateDom(fiber.dom, fiber.alternate.props, fiber.props);
     } else if (fiber.effectTag === CommandType.DELETION) {
       commitDeletion(fiber, fiber.parent.dom);
       // fiber.parent.dom.removeChild(fiber.dom);
@@ -93,9 +129,9 @@
   function commitRoot() {
     // 删除之前已经挂载好的dom
     deleteFiber.forEach(commitWork);
-    commitWork(wipRoot);
-    currentRoot = wipRoot;
-    wipRoot = null;
+    commitWork(wipFiber.child);
+    currentRoot = wipFiber;
+    wipFiber = null;
   }
 
   function commitDeletion(fiber, domParent) {
@@ -114,23 +150,27 @@
     } else {
       el = document.createElement(fiber.type);
     }
-    Object.keys(fiber.props).forEach((item) => {
-      if (item === 'children') return;
-      el[item] = fiber.props[item];
-    });
+    updateDom(el, {}, fiber.props)
     return el;
   }
 
   function render(element, container) {
-    wipRoot = {
+    wipFiber = {
       dom: container,
       props: {
         children: [element]
       },
       alternate: currentRoot,
     }
-    nextUnitOfWork = wipRoot;
+    nextUnitOfWork = wipFiber;
     deleteFiber = [];
+  }
+
+  function updateFunctionComponent(fiber) {
+    wipFiber.hooks = [];
+    hookIndex = 0;
+    const children = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, children);
   }
 
   function updateHostComponent(fiber) {
@@ -191,7 +231,13 @@
   }
 
   function performUnitOfWork(fiber) {
-    updateHostComponent(fiber);
+    const isFunctionComponent = 
+      fiber.type instanceof Function;
+    if (isFunctionComponent) {
+      updateFunctionComponent(fiber);
+    } else {
+      updateHostComponent(fiber);
+    }
     // 深度优先搜索，如果有 child 先返回 child
     if (fiber.child) {
       return fiber.child;
@@ -210,6 +256,34 @@
 
   requestIdleCallback(workLoop);
 
+  const useState = (initial) => {
+    const oldHook =
+      wipFiber.alternate &&
+      wipFiber.alternate.hooks &&
+      wipFiber.alternate.hooks[hookIndex];
+    const hook = {
+      state: oldHook ? oldHook.state : initial,
+      queue: [],
+    };
+    const actions = oldHook ? oldHook.queue : [];
+    actions.forEach(actions => {
+      hook.state = actions(hook.state);
+    });
+    const setState = actions => {
+      hook.queue.push(actions);
+      wipFiber = {
+        dom: currentRoot.dom,
+        props: currentRoot.props,
+        alternate: currentRoot,
+      }
+      nextUnitOfWork = wipFiber;
+      deleteFiber = [];
+    }
+    wipFiber.hooks.push(hook);
+    hookIndex ++;
+    return [hook.state, setState];
+  }
+
   const element = createElement(
     "div",
     { id: "foo" },
@@ -224,15 +298,41 @@
     createElement("p", null, "bar4")  // delete
   );
 
-  // const element2 = createElement(
-  //   "div",
-  //   { id: "ffoooo" },
-  //   createElement("span", null, "bar"),
-  //   createElement("span", null, "bar2")
-  // );
+  function Counter() {
+  var _useState = useState(1),
+      _useState2 = _slicedToArray(_useState, 2),
+      state = _useState2[0],
+      setState = _useState2[1];
 
-  render(element, document.getElementById('root'));
-  document.getElementById('rerender').addEventListener('click', function() {
+      var _useState = useState(5),
+      _useState2 = _slicedToArray(_useState, 2),
+      state2 = _useState2[0],
+      setState2 = _useState2[1];
+
+  return createElement(
+    "h1",
+    { onClick: function onClick() {
+        return setState(function (c) {
+          return c + 1;
+        });
+      } },
+    "Count: ",
+    state
+  );
+}
+  const app = createElement(Counter, {name: 'xxq'});
+
+  const element3 = createElement(
+    "div",
+    { id: "ffoooo" },
+    createElement("span", null, "bar"),
+    createElement("span", null, "bar2")
+  );
+
+  
+  render(app, document.getElementById('root'));
+  document.getElementById('rerender').addEventListener('click', () => {
     render(element2, document.getElementById('root'));
-  })
+    // render(element3, document.getElementById('root'));
+  });
 </script>

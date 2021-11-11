@@ -78,9 +78,18 @@
 
   function commitWork(fiber) {
     if (!fiber) return;
-    if (fiber.effectTag === CommandType.PLACEMENT) {
-      fiber.parent.dom.appendChild(fiber.dom);
-    } else if (fiber.effectTag === CommandType.UPDATE) {
+    // 父级Fiber
+    let domParentFiber = fiber.parent
+    // 直到找到含有dom的Fiber节点
+    while (!domParentFiber.dom) {
+      domParentFiber = domParentFiber.parent
+    }
+    const domParent = domParentFiber.dom;
+
+    if (fiber.effectTag === CommandType.PLACEMENT && fiber.dom !== null) {
+      domParent.appendChild(fiber.dom);
+      // 这里判断 fiber.dom !== null 原因是防止函数式组件 fiber.dom 是 null
+    } else if (fiber.effectTag === CommandType.UPDATE && fiber.dom !== null) {
       updateDom(fiber);
     } else if (fiber.effectTag === CommandType.DELETION) {
       commitDeletion(fiber, fiber.parent.dom);
@@ -93,7 +102,7 @@
   function commitRoot() {
     // 删除之前已经挂载好的dom
     deleteFiber.forEach(commitWork);
-    commitWork(wipRoot);
+    commitWork(wipRoot.child);
     currentRoot = wipRoot;
     wipRoot = null;
   }
@@ -131,6 +140,11 @@
     }
     nextUnitOfWork = wipRoot;
     deleteFiber = [];
+  }
+
+  function updateFunctionComponent(fiber) {
+    const children = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, children);
   }
 
   function updateHostComponent(fiber) {
@@ -191,7 +205,13 @@
   }
 
   function performUnitOfWork(fiber) {
-    updateHostComponent(fiber);
+    const isFunctionComponent = 
+      fiber.type instanceof Function;
+    if (isFunctionComponent) {
+      updateFunctionComponent(fiber);
+    } else {
+      updateHostComponent(fiber);
+    }
     // 深度优先搜索，如果有 child 先返回 child
     if (fiber.child) {
       return fiber.child;
@@ -224,15 +244,25 @@
     createElement("p", null, "bar4")  // delete
   );
 
-  // const element2 = createElement(
-  //   "div",
-  //   { id: "ffoooo" },
-  //   createElement("span", null, "bar"),
-  //   createElement("span", null, "bar2")
-  // );
+  function App(props) {
+    return createElement(
+      "h1",
+      null,
+      "Hi ",
+      props.name
+    )
+  }
 
-  render(element, document.getElementById('root'));
-  document.getElementById('rerender').addEventListener('click', function() {
+  const element3 = createElement(
+    "div",
+    { id: "ffoooo" },
+    createElement("span", null, "bar"),
+    createElement("span", null, "bar2")
+  );
+  const app = createElement(App, {name: 'xxq'});
+  render(app, document.getElementById('root'));
+  document.getElementById('rerender').addEventListener('click', () => {
     render(element2, document.getElementById('root'));
-  })
+    // render(element3, document.getElementById('root'));
+  });
 </script>
