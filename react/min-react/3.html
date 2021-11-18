@@ -54,11 +54,19 @@
   //    <span></span>
   //  </div>
 
+  // const element = createElement(
+  //   "div",
+  //   { id: "foo" },
+  //   createElement("span", null, "bar"),
+  //   createElement("span", null, "bar2")
+  // );
+
   const element = createElement(
-    "div",
-    { id: "foo" },
-    createElement("span", null, "bar"),
-    createElement("span", null, "bar2")
+    "body",
+    null,
+    createElement("span", null),
+    createElement("p", null),
+    createElement("div", null)
   );
 
   let nextUnitOfWork = null;

@@ -21,7 +21,7 @@ function Counter() {
       state = _useState2[0],
       setState = _useState2[1];
 
-  return createElement(
+  return React.createElement(
     "h1",
     { onClick: function onClick() {
         return setState(function (c) {
@@ -30,5 +30,15 @@ function Counter() {
       } },
     "Count: ",
     state
+  );
+}
+
+function test() {
+  return React.createElement(
+    "body",
+    null,
+    React.createElement("span", null),
+    React.createElement("p", null),
+    React.createElement("div", null)
   );
 }

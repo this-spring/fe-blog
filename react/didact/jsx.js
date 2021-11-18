@@ -15,3 +15,13 @@ function Counter() {
     </h1>
   )
 }
+
+function test() {
+  return (
+    <body>
+      <span></span>
+      <p></p>
+      <div></div>
+    </body>
+  )
+}
